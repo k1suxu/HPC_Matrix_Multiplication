@@ -2,13 +2,16 @@
 #include <time.h>
 #include <stdlib.h>
 #include <assert.h>
-                                                            /* original code: H. Hasegawa; 2024.10. 4. */
-																														/* updated code: K. Suzuta; 2025.11.6 */
+#include <immintrin.h>
+#include <omp.h>
+                                                            /* H. Hasegawa; 2024.10. 4. */
 // TO ENSURE N is equal to or bigger than input-n
 #define TIME_LIMIT 160
 #define N 2500
 
-double A[N+1][N+1], B[N+1][N+1], C[N+1][N+1];
+double A[N+1][N+1] __attribute__((aligned(64)));
+double B[N+1][N+1] __attribute__((aligned(64)));
+double C[N+1][N+1] __attribute__((aligned(64)));
 
 void mm_ijk(int m, int p, int n);
 void mm_ikj(int m, int p, int n);
@@ -51,6 +54,8 @@ void mm_ikj_block10(int m, int p, int n);
 void mm_ikj_block20(int m, int p, int n);
 void mm_ikj_block50(int m, int p, int n);
 
+void mm_fastest(int m, int p, int n);
+
 void measure_time(void (*mm)(int, int, int), char *name, int n, FILE* fp);
 void Input_Matrix(int m, int p, int n);
 void Print_Matrix(int m, int p, int n);
@@ -83,15 +88,26 @@ int main(int argc, char *argv[])
 		// measure_time(mm_jki, "jki", n, fp);
 		// measure_time(mm_kij, "kij", n, fp);
 		// measure_time(mm_kji, "kji", n, fp);
+
 		// measure_time(mm_i2kj, "i2kj", n, fp);
 		// measure_time(mm_ik2j, "ik2j", n, fp);
 		// measure_time(mm_ikj2, "ikj2", n, fp);
 		// measure_time(mm_k2ij, "k2ij", n, fp);
 		// measure_time(mm_ki2j, "ki2j", n, fp);
 		// measure_time(mm_kij2, "kij2", n, fp);
+
 		// measure_time(mm_ik4j, "ik4j", n, fp);
 		// measure_time(mm_ik8j, "ik8j", n, fp);
 		// measure_time(mm_ik16j, "ik16j", n, fp);
+		// measure_time(mm_ik10j, "ik10j", n, fp);
+		// measure_time(mm_ik20j, "ik20j", n, fp);
+		
+		// measure_time(mm_k4ij, "k4ij", n, fp);
+		// measure_time(mm_k8ij, "k8ij", n, fp);
+		// measure_time(mm_k16ij, "k16ij", n, fp);
+		// measure_time(mm_k10ij, "k10ij", n, fp);
+		// measure_time(mm_k20ij, "k20ij", n, fp);
+
 		// measure_time(mm_ijk_block2, "ijk_block2", n, fp);
 		// measure_time(mm_ijk_block4, "ijk_block4", n, fp);
 		// measure_time(mm_ijk_block5, "ijk_block5", n, fp);
@@ -106,14 +122,7 @@ int main(int argc, char *argv[])
 		// measure_time(mm_ikj_block20, "ikj_block20", n, fp);
 		// measure_time(mm_ikj_block50, "ikj_block50", n, fp);
 
-		// measure_time(mm_k4ij, "k4ij", n, fp);
-		// measure_time(mm_k8ij, "k8ij", n, fp);
-		// measure_time(mm_k16ij, "k16ij", n, fp);
-
-		measure_time(mm_ik10j, "ik10j", n, fp);
-		measure_time(mm_ik20j, "ik20j", n, fp);
-		measure_time(mm_k10ij, "k10ij", n, fp);
-		measure_time(mm_k20ij, "k20ij", n, fp);
+		measure_time(mm_fastest, "fastest", n, fp);
 	}
 
 	if (n<11) {
@@ -140,6 +149,14 @@ void measure_time(void (*mm)(int, int, int), char *name, int n, FILE *fp) {
 	t = (double)(toc - tic)/CLOCKS_PER_SEC;
 	Gflops = (2.0*n)*n*n/t/1e+9;
 	fprintf(fp, "%s,%d,%.2f,%.2f\n", name, n, t, Gflops);
+
+	// Multicore用計測関数
+	// struct timespec tic, toc;
+	// clock_gettime(CLOCK_REALTIME, &tic);
+	// mm(n, n, n);
+	// clock_gettime(CLOCK_REALTIME, &toc);
+	// t = toc.tv_sec - tic.tv_sec + (toc.tv_nsec - tic.tv_nsec) / 1e9;
+	// Gflops = (2.0*n)*n*n/t/1e+9;
 
 	for (int i = 1; i <= n; i++) {
 		for (int j = 1; j <= n; j++) {
@@ -268,8 +285,8 @@ void mm_ik2j(int m, int p, int n)
 	for (i = 1; i <= m; i++) {
 		for (k = 1; k+1 <= p; k+=2) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
+				C[i][j] += A[i][k]*B[k][j]
+							   + A[i][k+1]*B[k+1][j];
 			}
 		}
 	}
@@ -316,8 +333,8 @@ void mm_k2ij(int m, int p, int n)
 	for (k = 1; k+1 <= p; k += 2) {
 		for (i = 1; i <= m; i++) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
+				C[i][j] += A[i][k]*B[k][j]
+								 + A[i][k+1]*B[k+1][j];
 			}
 		}
 	}
@@ -388,10 +405,10 @@ void mm_ik4j(int m, int p, int n)
 	for (i = 1; i <= m; i++) {
 		for (k = 1; k+3 <= p; k+=4) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j];
 			}
 		}
 	}
@@ -414,14 +431,14 @@ void mm_ik8j(int m, int p, int n)
 	for (i = 1; i <= m; i++) {
 		for (k = 1; k+7 <= p; k+=8) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
+				C[i][j] += A[i][k]*B[k][j]
+								 + A[i][k+1]*B[k+1][j]
+								 + A[i][k+2]*B[k+2][j]
+								 + A[i][k+3]*B[k+3][j]
+								 + A[i][k+4]*B[k+4][j]
+								 + A[i][k+5]*B[k+5][j]
+								 + A[i][k+6]*B[k+6][j]
+								 + A[i][k+7]*B[k+7][j];
 			}
 		}
 	}
@@ -444,22 +461,22 @@ void mm_ik16j(int m, int p, int n)
 	for (i = 1; i <= m; i++) {
 		for (k = 1; k+15 <= p; k+=16) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
-				C[i][j] += A[i][k+8]*B[k+8][j];
-				C[i][j] += A[i][k+9]*B[k+9][j];
-				C[i][j] += A[i][k+10]*B[k+10][j];
-				C[i][j] += A[i][k+11]*B[k+11][j];
-				C[i][j] += A[i][k+12]*B[k+12][j];
-				C[i][j] += A[i][k+13]*B[k+13][j];
-				C[i][j] += A[i][k+14]*B[k+14][j];
-				C[i][j] += A[i][k+15]*B[k+15][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j]
+				         + A[i][k+8]*B[k+8][j]
+				         + A[i][k+9]*B[k+9][j]
+				         + A[i][k+10]*B[k+10][j]
+				         + A[i][k+11]*B[k+11][j]
+				         + A[i][k+12]*B[k+12][j]
+				         + A[i][k+13]*B[k+13][j]
+				         + A[i][k+14]*B[k+14][j]
+				         + A[i][k+15]*B[k+15][j];
 			}
 		}
 	}
@@ -482,16 +499,16 @@ void mm_ik10j(int m, int p, int n)
 	for (i = 1; i <= m; i++) {
 		for (k = 1; k+9 <= p; k+=10) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
-				C[i][j] += A[i][k+8]*B[k+8][j];
-				C[i][j] += A[i][k+9]*B[k+9][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j]
+				         + A[i][k+8]*B[k+8][j]
+				         + A[i][k+9]*B[k+9][j];
 			}
 		}
 	}
@@ -503,26 +520,26 @@ void mm_ik20j(int m, int p, int n)
 	for (i = 1; i <= m; i++) {
 		for (k = 1; k+19 <= p; k+=20) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
-				C[i][j] += A[i][k+8]*B[k+8][j];
-				C[i][j] += A[i][k+9]*B[k+9][j];
-				C[i][j] += A[i][k+10]*B[k+10][j];
-				C[i][j] += A[i][k+11]*B[k+11][j];
-				C[i][j] += A[i][k+12]*B[k+12][j];
-				C[i][j] += A[i][k+13]*B[k+13][j];
-				C[i][j] += A[i][k+14]*B[k+14][j];
-				C[i][j] += A[i][k+15]*B[k+15][j];
-				C[i][j] += A[i][k+16]*B[k+16][j];
-				C[i][j] += A[i][k+17]*B[k+17][j];
-				C[i][j] += A[i][k+18]*B[k+18][j];
-				C[i][j] += A[i][k+19]*B[k+19][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j]
+				         + A[i][k+8]*B[k+8][j]
+				         + A[i][k+9]*B[k+9][j]
+				         + A[i][k+10]*B[k+10][j]
+				         + A[i][k+11]*B[k+11][j]
+				         + A[i][k+12]*B[k+12][j]
+				         + A[i][k+13]*B[k+13][j]
+				         + A[i][k+14]*B[k+14][j]
+				         + A[i][k+15]*B[k+15][j]
+				         + A[i][k+16]*B[k+16][j]
+				         + A[i][k+17]*B[k+17][j]
+				         + A[i][k+18]*B[k+18][j]
+				         + A[i][k+19]*B[k+19][j];
 			}
 		}
 	}
@@ -535,10 +552,10 @@ void mm_k4ij(int m, int p, int n)
 	for (k = 1; k+3 <= p; k+=4) {
 		for (i = 1; i <= m; i++) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j];
 			}
 		}
 	}
@@ -560,14 +577,14 @@ void mm_k8ij(int m, int p, int n)
 	for (k = 1; k+7 <= p; k+=8) {
 		for (i = 1; i <= m; i++) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j];
 			}
 		}
 	}
@@ -590,22 +607,22 @@ void mm_k16ij(int m, int p, int n)
 	for (k = 1; k+15 <= p; k+=16) {
 		for (i = 1; i <= m; i++) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
-				C[i][j] += A[i][k+8]*B[k+8][j];
-				C[i][j] += A[i][k+9]*B[k+9][j];
-				C[i][j] += A[i][k+10]*B[k+10][j];
-				C[i][j] += A[i][k+11]*B[k+11][j];
-				C[i][j] += A[i][k+12]*B[k+12][j];
-				C[i][j] += A[i][k+13]*B[k+13][j];
-				C[i][j] += A[i][k+14]*B[k+14][j];
-				C[i][j] += A[i][k+15]*B[k+15][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j]
+				         + A[i][k+8]*B[k+8][j]
+				         + A[i][k+9]*B[k+9][j]
+				         + A[i][k+10]*B[k+10][j]
+				         + A[i][k+11]*B[k+11][j]
+				         + A[i][k+12]*B[k+12][j]
+				         + A[i][k+13]*B[k+13][j]
+				         + A[i][k+14]*B[k+14][j]
+				         + A[i][k+15]*B[k+15][j];
 			}
 		}
 	}
@@ -627,20 +644,73 @@ void mm_k10ij(int m, int p, int n)
 	for (k = 1; k+9 <= p; k+=10) {
 		for (i = 1; i <= m; i++) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
-				C[i][j] += A[i][k+8]*B[k+8][j];
-				C[i][j] += A[i][k+9]*B[k+9][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j]
+				         + A[i][k+8]*B[k+8][j]
+				         + A[i][k+9]*B[k+9][j];
 			}
 		}
 	}
 }
+
+void mm_fastest(int m, int p, int n)
+{
+  const int BK = 64;
+  const int BI = 64;
+  const int BJ = 64;
+  const int UL = 4;
+
+  if (m <= 0 || p <= 0 || n <= 0) return;
+
+	// openmp並列化
+	#pragma omp parallel for collapse(2) schedule(static)
+  for (int ib = 1; ib <= m; ib += BI) {
+    for (int jb  = 1; jb <= n; jb += BJ) {
+			// 範囲外アクセスに注意
+      int ib_lst = (ib + BI - 1 <= m) ? (ib + BI - 1) : m;
+      int jb_lst = (jb + BJ - 1 <= n) ? (jb + BJ - 1) : n;
+
+      for (int kb = 1; kb <= p; kb += BK) {
+        int kb_lst = (kb + BK - 1 <= p) ? (kb + BK - 1) : p;
+
+        for (int k = kb; k <= kb_lst; k += UL) {
+          int unroll = (k + UL - 1 <= kb_lst) ? (k + UL - 1) : kb_lst;
+
+          for (int i = ib; i <= ib_lst; ++i) {
+            int j = jb;
+
+						// AVX512による最適化
+            for (; j + 7 <= jb_lst; j += 8) {
+              __m512d cv = _mm512_loadu_pd(&C[i][j]);
+              for (int ku = k; ku <= unroll; ++ku) {
+                __m512d av = _mm512_set1_pd(A[i][ku]);
+                __m512d bv = _mm512_loadu_pd(&B[ku][j]);
+                cv = _mm512_fmadd_pd(av, bv, cv);
+              }
+              _mm512_storeu_pd(&C[i][j], cv);
+            }
+
+						// 端数処理
+            for (; j <= jb_lst; ++j) {
+              double cij = C[i][j];
+              for (int ku = k; ku <= unroll; ++ku) {
+                cij += A[i][ku] * B[ku][j];
+              }
+              C[i][j] = cij;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 
 void mm_k20ij(int m, int p, int n)
 {
@@ -648,26 +718,26 @@ void mm_k20ij(int m, int p, int n)
 	for (k = 1; k+19 <= p; k+=20) {
 		for (i = 1; i <= m; i++) {
 			for (j = 1; j <= n; j++) {
-				C[i][j] += A[i][k]*B[k][j];
-				C[i][j] += A[i][k+1]*B[k+1][j];
-				C[i][j] += A[i][k+2]*B[k+2][j];
-				C[i][j] += A[i][k+3]*B[k+3][j];
-				C[i][j] += A[i][k+4]*B[k+4][j];
-				C[i][j] += A[i][k+5]*B[k+5][j];
-				C[i][j] += A[i][k+6]*B[k+6][j];
-				C[i][j] += A[i][k+7]*B[k+7][j];
-				C[i][j] += A[i][k+8]*B[k+8][j];
-				C[i][j] += A[i][k+9]*B[k+9][j];
-				C[i][j] += A[i][k+10]*B[k+10][j];
-				C[i][j] += A[i][k+11]*B[k+11][j];
-				C[i][j] += A[i][k+12]*B[k+12][j];
-				C[i][j] += A[i][k+13]*B[k+13][j];
-				C[i][j] += A[i][k+14]*B[k+14][j];
-				C[i][j] += A[i][k+15]*B[k+15][j];
-				C[i][j] += A[i][k+16]*B[k+16][j];
-				C[i][j] += A[i][k+17]*B[k+17][j];
-				C[i][j] += A[i][k+18]*B[k+18][j];
-				C[i][j] += A[i][k+19]*B[k+19][j];
+				C[i][j] += A[i][k]*B[k][j]
+				         + A[i][k+1]*B[k+1][j]
+				         + A[i][k+2]*B[k+2][j]
+				         + A[i][k+3]*B[k+3][j]
+				         + A[i][k+4]*B[k+4][j]
+				         + A[i][k+5]*B[k+5][j]
+				         + A[i][k+6]*B[k+6][j]
+				         + A[i][k+7]*B[k+7][j]
+				         + A[i][k+8]*B[k+8][j]
+				         + A[i][k+9]*B[k+9][j]
+				         + A[i][k+10]*B[k+10][j]
+				         + A[i][k+11]*B[k+11][j]
+				         + A[i][k+12]*B[k+12][j]
+				         + A[i][k+13]*B[k+13][j]
+				         + A[i][k+14]*B[k+14][j]
+				         + A[i][k+15]*B[k+15][j]
+				         + A[i][k+16]*B[k+16][j]
+				         + A[i][k+17]*B[k+17][j]
+				         + A[i][k+18]*B[k+18][j]
+				         + A[i][k+19]*B[k+19][j];
 			}
 		}
 	}

@@ -116,7 +116,7 @@ def create_graph(csv_file, algs, output, output_dir):
     CSVファイルからデータを読み込み、指定されたアルゴリズムのGFLOPS vs Nのグラフを作成する
     
     Args:
-        csv_file: CSVファイルのパス
+        csv_file_or_data: CSVファイルのパス、または既に抽出されたデータの辞書
         algs: プロット対象のアルゴリズム名のリスト
         output: 出力ファイルのパス（.pngなど）
         output_dir: 出力ディレクトリ
@@ -161,7 +161,7 @@ def create_graph(csv_file, algs, output, output_dir):
     
     plt.xlabel('N', fontsize=12)
     plt.ylabel('GFLOPS', fontsize=12)
-    plt.title('GFLOPS vs N by Algorithm', fontsize=14)
+    # plt.title('GFLOPS vs N by Algorithm', fontsize=14)
     if data:  # Only add legend if there's data to plot
         plt.legend(loc='best', fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -223,6 +223,8 @@ if __name__ == "__main__":
                 max_cnt_alg[alg] += 1
             f.write(f"{n}, {', '.join(max_algs)}\n")
         print(max_cnt_alg)
+    
+    # create_graph(data_src, ['fastest', 'ijk', 'k10ij'], 'fastest_cmp_k10ij.png', '../PICS/')
 
     pass
 
