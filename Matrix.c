@@ -2,8 +2,8 @@
 #include <time.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <immintrin.h>
-#include <omp.h>
+// #include <immintrin.h>
+// #include <omp.h>
                                                             /* H. Hasegawa; 2024.10. 4. */
 // TO ENSURE N is equal to or bigger than input-n
 #define TIME_LIMIT 160
@@ -141,14 +141,13 @@ void measure_time(void (*mm)(int, int, int), char *name, int n, FILE *fp) {
 	Input_Matrix(n, n, n);
 	
 	double t, Gflops;
-	clock_t tic, toc;
 
+	clock_t tic, toc;
 	tic = clock();
 	mm(n, n, n);
 	toc = clock();
 	t = (double)(toc - tic)/CLOCKS_PER_SEC;
 	Gflops = (2.0*n)*n*n/t/1e+9;
-	fprintf(fp, "%s,%d,%.2f,%.2f\n", name, n, t, Gflops);
 
 	// Multicore用計測関数
 	// struct timespec tic, toc;
@@ -157,6 +156,8 @@ void measure_time(void (*mm)(int, int, int), char *name, int n, FILE *fp) {
 	// clock_gettime(CLOCK_REALTIME, &toc);
 	// t = toc.tv_sec - tic.tv_sec + (toc.tv_nsec - tic.tv_nsec) / 1e9;
 	// Gflops = (2.0*n)*n*n/t/1e+9;
+
+	// fprintf(fp, "%s,%d,%.2f,%.2f\n", name, n, t, Gflops);
 
 	for (int i = 1; i <= n; i++) {
 		for (int j = 1; j <= n; j++) {
@@ -659,58 +660,57 @@ void mm_k10ij(int m, int p, int n)
 	}
 }
 
-void mm_fastest(int m, int p, int n)
-{
-  const int BK = 64;
-  const int BI = 64;
-  const int BJ = 64;
-  const int UL = 4;
+// void mm_fastest(int m, int p, int n)
+// {
+//   const int BK = 64;
+//   const int BI = 64;
+//   const int BJ = 64;
+//   const int UL = 32;
 
-  if (m <= 0 || p <= 0 || n <= 0) return;
+//   if (m <= 0 || p <= 0 || n <= 0) return;
 
-	// openmp並列化
-	#pragma omp parallel for collapse(2) schedule(static)
-  for (int ib = 1; ib <= m; ib += BI) {
-    for (int jb  = 1; jb <= n; jb += BJ) {
-			// 範囲外アクセスに注意
-      int ib_lst = (ib + BI - 1 <= m) ? (ib + BI - 1) : m;
-      int jb_lst = (jb + BJ - 1 <= n) ? (jb + BJ - 1) : n;
+// 	// openmp並列化
+// 	#pragma omp parallel for collapse(2) schedule(static)
+//   for (int ib = 1; ib <= m; ib += BI) {
+//     for (int jb  = 1; jb <= n; jb += BJ) {
+// 			// 範囲外アクセスに注意
+//       int ib_lst = (ib + BI - 1 <= m) ? (ib + BI - 1) : m;
+//       int jb_lst = (jb + BJ - 1 <= n) ? (jb + BJ - 1) : n;
 
-      for (int kb = 1; kb <= p; kb += BK) {
-        int kb_lst = (kb + BK - 1 <= p) ? (kb + BK - 1) : p;
+//       for (int kb = 1; kb <= p; kb += BK) {
+//         int kb_lst = (kb + BK - 1 <= p) ? (kb + BK - 1) : p;
 
-        for (int k = kb; k <= kb_lst; k += UL) {
-          int unroll = (k + UL - 1 <= kb_lst) ? (k + UL - 1) : kb_lst;
+//         for (int k = kb; k <= kb_lst; k += UL) {
+//           int unroll = (k + UL - 1 <= kb_lst) ? (k + UL - 1) : kb_lst;
 
-          for (int i = ib; i <= ib_lst; ++i) {
-            int j = jb;
+//           for (int i = ib; i <= ib_lst; ++i) {
+//             int j = jb;
 
-						// AVX512による最適化
-            for (; j + 7 <= jb_lst; j += 8) {
-              __m512d cv = _mm512_loadu_pd(&C[i][j]);
-              for (int ku = k; ku <= unroll; ++ku) {
-                __m512d av = _mm512_set1_pd(A[i][ku]);
-                __m512d bv = _mm512_loadu_pd(&B[ku][j]);
-                cv = _mm512_fmadd_pd(av, bv, cv);
-              }
-              _mm512_storeu_pd(&C[i][j], cv);
-            }
+// 						// AVX512による最適化
+//             for (; j + 7 <= jb_lst; j += 8) {
+//               __m512d cv = _mm512_loadu_pd(&C[i][j]);
+//               for (int ku = k; ku <= unroll; ++ku) {
+//                 __m512d av = _mm512_set1_pd(A[i][ku]);
+//                 __m512d bv = _mm512_loadu_pd(&B[ku][j]);
+//                 cv = _mm512_fmadd_pd(av, bv, cv);
+//               }
+//               _mm512_storeu_pd(&C[i][j], cv);
+//             }
 
-						// 端数処理
-            for (; j <= jb_lst; ++j) {
-              double cij = C[i][j];
-              for (int ku = k; ku <= unroll; ++ku) {
-                cij += A[i][ku] * B[ku][j];
-              }
-              C[i][j] = cij;
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
+// 						// 端数処理
+//             for (; j <= jb_lst; ++j) {
+//               double cij = C[i][j];
+//               for (int ku = k; ku <= unroll; ++ku) {
+//                 cij += A[i][ku] * B[ku][j];
+//               }
+//               C[i][j] = cij;
+//             }
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
 
 void mm_k20ij(int m, int p, int n)
 {

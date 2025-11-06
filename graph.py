@@ -1,70 +1,9 @@
-import csv
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import shutil
-
-
-def check_missing_data(data):
-    algs = data.keys()
-    n_values = set()
-    for alg in algs:
-        n_values.update(data[alg]['N'])
-    for alg in algs:
-        for n in n_values:
-            if n not in data[alg]['N']:
-                print(f"Missing data for {alg} at N={n}")
-                return False
-    return True
-
-def extract_data(csv_file, algs=None, exclude_n=None):
-    """
-    CSVファイルからデータを抽出する
-    
-    Args:
-        csv_file: CSVファイルのパス
-        algs: 抽出対象のアルゴリズム名のリスト（Noneの場合はすべて）
-        exclude_n: 除外するNの値のリスト（Noneの場合は除外なし）
-    
-    Returns:
-        dict: {アルゴリズム名: {'N': [N値のリスト], 'GFLOPS': [GFLOPS値のリスト]}}
-    """
-    data = {}
-    exclude_n_set = set(exclude_n) if exclude_n else set()
-    
-    with open(csv_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            alg = row['Alg'].strip()
-            n = int(row['N'].strip())
-            gflops = float(row['GFLOPS'].strip())
-            
-            # アルゴリズムのフィルタリング
-            if algs is not None and alg not in algs:
-                continue
-            
-            # Nのフィルタリング
-            if n in exclude_n_set:
-                continue
-            
-            if alg not in data:
-                data[alg] = {'N': [], 'GFLOPS': []}
-            data[alg]['N'].append(n)
-            data[alg]['GFLOPS'].append(gflops)
-    
-    # データをNでソート
-    for alg in data:
-        sorted_indices = np.argsort(data[alg]['N'])
-        data[alg]['N'] = [data[alg]['N'][i] for i in sorted_indices]
-        data[alg]['GFLOPS'] = [data[alg]['GFLOPS'][i] for i in sorted_indices]
-    
-    if not check_missing_data(data):
-        print("Missing data found")
-        exit(1)
-    
-    return data
-
+from data_extractor import extract_data
 
 def get_algorithms_with_max(csv_file, exclude_n=None):
     """
@@ -128,36 +67,37 @@ def create_graph(csv_file, algs, output, output_dir):
     plt.figure(figsize=(10, 6))
     
     # 各アルゴリズムをプロット
-    for alg in data:
+    sorted_algs = sorted(data.keys())
+    for alg in sorted_algs:
         n_values = data[alg]['N']
         gflops_values = data[alg]['GFLOPS']
         plt.plot(n_values, gflops_values, marker='o', label=alg, linewidth=2, markersize=6)
     
-    # 各Nにおける最適点（最高GFLOPS）を見つけてマーカーを付ける
-    # すべてのNの値を取得
-    all_n = set()
-    for alg in data:
-        all_n.update(data[alg]['N'])
+    # # 各Nにおける最適点（最高GFLOPS）を見つけてマーカーを付ける
+    # # すべてのNの値を取得
+    # all_n = set()
+    # for alg in data:
+    #     all_n.update(data[alg]['N'])
     
-    for n in sorted(all_n):
-        max_gflops = -1
-        best_alg = None
+    # for n in sorted(all_n):
+    #     max_gflops = -1
+    #     best_alg = None
         
-        for alg in data:
-            if n in data[alg]['N']:
-                idx = data[alg]['N'].index(n)
-                gflops = data[alg]['GFLOPS'][idx]
-                if gflops > max_gflops:
-                    max_gflops = gflops
-                    best_alg = alg
+    #     for alg in data:
+    #         if n in data[alg]['N']:
+    #             idx = data[alg]['N'].index(n)
+    #             gflops = data[alg]['GFLOPS'][idx]
+    #             if gflops > max_gflops:
+    #                 max_gflops = gflops
+    #                 best_alg = alg
         
-        if best_alg is not None:
-            # 最適点に特別なマーカーを付ける
-            n_idx = data[best_alg]['N'].index(n)
-            plt.scatter(n, data[best_alg]['GFLOPS'][n_idx], 
-                       s=200, marker='*', color='red', 
-                       edgecolors='darkred', linewidths=2, zorder=10,
-                       label='Best' if n == sorted(all_n)[0] else '')
+    #     if best_alg is not None:
+    #         # 最適点に特別なマーカーを付ける
+    #         n_idx = data[best_alg]['N'].index(n)
+    #         plt.scatter(n, data[best_alg]['GFLOPS'][n_idx], 
+    #                    s=200, marker='*', color='red', 
+    #                    edgecolors='darkred', linewidths=2, zorder=10,
+    #                    label='Best' if n == sorted(all_n)[0] else '')
     
     plt.xlabel('N', fontsize=12)
     plt.ylabel('GFLOPS', fontsize=12)
@@ -224,7 +164,7 @@ if __name__ == "__main__":
             f.write(f"{n}, {', '.join(max_algs)}\n")
         print(max_cnt_alg)
     
-    # create_graph(data_src, ['fastest', 'ijk', 'k10ij'], 'fastest_cmp_k10ij.png', '../PICS/')
+    # create_graph(data_src, ['fastest', 'ijk', 'k10ij', 'optimized_k10ij'], 'fastest_cmp_k10ij.png', '../PICS/')
 
     pass
 
